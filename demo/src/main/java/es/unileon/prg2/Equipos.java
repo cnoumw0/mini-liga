@@ -61,7 +61,7 @@ public class Equipos {
                 }
 
                 // añadir jugador
-                equipo.addJugador(new Jugadores(nombreJugador));
+                equipo.addJugador(new Jugador(nombreJugador));
             }
 
         } catch (IOException e) {

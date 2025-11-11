@@ -2,14 +2,14 @@ package es.unileon.prg2;
 
 public class Equipo {
     private String nombre;
-    private Jugadores[] jugadores;
+    private Jugador[] jugadores;
     private int numJugadores; // contador actual
 
     private static final int MAX_JUGADORES = 15; 
 
     public Equipo(String nombre) {
         this.nombre = nombre;
-        this.jugadores = new Jugadores[MAX_JUGADORES];
+        this.jugadores = new Jugador[MAX_JUGADORES];
         this.numJugadores = 0;
     }
 
@@ -17,7 +17,7 @@ public class Equipo {
         return nombre;
     }
 
-    public Jugadores[] getJugadores() {
+    public Jugador[] getJugadores() {
         return jugadores;
     }
 
@@ -26,7 +26,7 @@ public class Equipo {
     }
 
     /** Añadir jugador al vector */
-    public void addJugador(Jugadores jugador) {
+    public void addJugador(Jugador jugador) {
         if (numJugadores < MAX_JUGADORES) {
             jugadores[numJugadores] = jugador;
             numJugadores++;

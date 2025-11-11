@@ -1,9 +1,9 @@
 package es.unileon.prg2;
 
-public class Jugadores {
+public class Jugador {
     private String nombre;
 
-    public Jugadores(String nombre) {
+    public Jugador(String nombre) {
         this.nombre = nombre;
     }
 
