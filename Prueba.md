@@ -452,7 +452,89 @@ La fijación de versiones asegura que el entorno sea reproducible y evita incomp
 
 ---
 
-## 14. Tests
+## 14. Artefactos del Modelo y Compatibilidad
+### 14.1 Artefactos del modelo
+Los artefactos son los ficheros que guardan el conocimiento del sistema y son imprescindibles para que el backend arranque correctamente.
+
+**Ruta esperada por defecto:**
+- `Backend/models/patchcore/memory_bank_core.npz`
+- `Backend/models/patchcore/config.json`
+
+Puedes cambiar la ruta con la variable de entorno `ARTIFACTS_DIR` (ej.: `ARTIFACTS_DIR=Backend/models/patchcore`).
+
+**Opciones para disponer de los artefactos:**
+- **A) Usar artefactos preconstruidos**
+  1. Obtén los archivos `memory_bank_core.npz` y `config.json` desde tu fuente interna (drive/artefactos de release).
+  2. Colócalos en `Backend/models/patchcore/` (o en la ruta configurada en `ARTIFACTS_DIR`).
+  3. Verifica su existencia:
+     - Linux/macOS: `ls -lh Backend/models/patchcore/`
+     - Windows (PowerShell): `Get-ChildItem Backend/models/patchcore/`
+  > Nota: Si faltan, la app fallará en el arranque con “No existe memory bank: …”.
+
+- **B) Generar los artefactos desde imágenes normales**
+  1. Reúne un dataset de imágenes normales (sin defectos), por ejemplo en `data/normal/`.
+  2. Usa el mismo preprocesado que la inferencia (escala de grises, `IMG_SIZE`).
+  3. Extrae embeddings con el backbone (ResNet18 con hooks en `layer2` y `layer3`), normaliza por patch (L2) y construye el banco KNN.
+  4. Guarda:
+     - `memory_bank_core.npz`: embeddings/matriz de memoria.
+     - `config.json`: parámetros (ej. `{"threshold": 0.35, "embedding_version": "resnet18_layer2_3_concat_v1", "model_version": "1.0.0"}`).
+  5. Ejemplo de comando (ajusta al script/notebook que tengas):
+     ```
+     python tools/build_memory_bank.py --data-dir data/normal \
+       --out-dir Backend/models/patchcore --img-size 256 --k 3 --threshold 0.35
+     ```
+  6. Comprobación posterior: arranca el backend y consulta `GET /health` para verificar `threshold`, `img_size`, etc.
+
+---
+
+### 14.2 Compatibilidad (Python/CUDA)
+Para asegurar reproducibilidad y rendimiento, se recomienda:
+
+- **Versión de Python**: 3.10 o 3.11.  
+- **PyTorch/torchvision**: instala versiones compatibles con tu entorno (CPU o GPU).  
+  - Guía oficial: [PyTorch Get Started](https://pytorch.org/get-started/locally/)  
+- **GPU (opcional)**:
+  - Asegúrate de que la versión de `torch` coincide con tu versión de CUDA (ej. CUDA 12.1 ↔ build cu121).
+  - Verificación rápida en Python:
+    ```python
+    import torch
+    print("torch:", torch.__version__)
+    print("cuda available:", torch.cuda.is_available())
+    if torch.cuda.is_available():
+        print("device:", torch.cuda.get_device_name(0))
+    ```
+- **Recomendación de fijado de versiones (requirements.txt):**
+  - Fija `torch`, `torchvision`, `fastapi`, `uvicorn`, `opencv-python`, etc., para reproducibilidad.
+  - Si usas GPU, documenta qué build de `torch` instalar (CPU-only vs cuXXX).
+
+---
+
+### 14.3 Ejecución de Tests con pytest
+Los tests permiten validar el correcto funcionamiento del backend.
+
+**Instalación de dependencias de test:**
+- `pip install pytest`
+- (Opcional) si tus tests usan clientes HTTP: `pip install httpx pytest-asyncio`
+
+**Requisitos previos:**
+- Asegúrate de que los artefactos (`memory_bank_core.npz`, `config.json`) existen en la ruta configurada.
+- Para acelerar, puedes desactivar visualizaciones en tests:
+  - Linux/macOS: `export SAVE_VIS=0`
+  - Windows (PowerShell): `$env:SAVE_VIS="0"`
+
+**Ejecución:**
+- Ejecutar todos los tests (por ejemplo si viven en `Backend/tests`):
+    - `pytest -q Backend/tests`
+- Ejecutar un test concreto:
+    - `pytest -q Backend/tests/test_health.py -k test_health`
+ 
+**Notas:**
+- Si los tests usan FastAPI TestClient, no necesitas arrancar `uvicorn`; los tests importan la app directamente.
+- Si un test falla con error de artefactos, revisa la ruta (`ARTIFACTS_DIR`) o coloca los archivos en `Backend/models/patchcore/`.
+
+---
+
+## 15. Tests
 En este apartado se explican los tipos de pruebas recomendadas para asegurar el correcto funcionamiento del backend. Se incluyen ejemplos de tests básicos (salud, predicción, errores esperados) y sugerencias para validar casos específicos como el uso de ROI o los modos de sensibilidad.
 
 **Casos sugeridos:**
@@ -478,7 +560,7 @@ def test_health(client):
 
 ---
 
-## 15. Seguridad y Rendimiento
+## 16. Seguridad y Rendimiento
 Esta parte reúne las buenas prácticas para mantener el backend estable, rápido y seguro. Se comentan medidas como la validación de archivos, la limitación del tamaño de entrada, el cacheo de componentes y la configuración adecuada del CORS en entornos de producción.
 
 **Recomendaciones:**
@@ -494,7 +576,7 @@ La aplicación de estas medidas asegura un backend robusto, eficiente y seguro e
   
 ---
 
-## 16. Extensiones Futuras
+## 17. Extensiones Futuras
 Aquí se presentan ideas y líneas de mejora que podrían implementarse a futuro, como el procesamiento en lote, la autenticación, la persistencia en base de datos o la exposición de métricas de rendimiento.
 
 **Ideas:**
@@ -510,10 +592,10 @@ Estas extensiones permitirían escalar el sistema, mejorar la seguridad y ofrece
 
 ---
 
-## 17. Diagramas ASCII de Arquitectura
+## 18. Diagramas ASCII de Arquitectura
 En esta sección se muestran diagramas de texto que ayudan a visualizar la relación entre los distintos componentes del sistema. Son útiles para comprender de un vistazo cómo fluye la información desde el frontend hasta la inferencia y la respuesta.
 
-### 17.1 Componentes
+### 18.1 Componentes
 ```
 +-------------------+          +--------------------------+
 |  Cliente (Web)    |  HTTP    | FastAPI (/predict,/...)  |
@@ -557,7 +639,7 @@ En esta sección se muestran diagramas de texto que ayudan a visualizar la relac
 
 ---
 
-## 18. Docstrings y Mejores Prácticas
+## 19. Docstrings y Mejores Prácticas
 Este apartado destaca la importancia de la documentación interna en el código. Se dan ejemplos de cómo escribir docstrings claros y cómo anotar funciones clave para facilitar el mantenimiento y la comprensión del sistema por otros desarrolladores.
 
 **Funciones clave ya documentadas parcialmente:**
@@ -591,7 +673,7 @@ def build_backbone() -> Tuple[torch.nn.Module, FeatHook, FeatHook]:
 
 ---
 
-## 19. Ejemplo Completo de Ciclo de Inferencia
+## 20. Ejemplo Completo de Ciclo de Inferencia
 Aquí se muestra un caso práctico completo, paso a paso, de cómo el backend procesa una imagen real. Permite entender de forma concreta cómo se aplican los parámetros y cómo se interpreta la respuesta final.
 
 Dado:
@@ -624,7 +706,7 @@ Este ejemplo muestra cómo los parámetros de configuración y el flujo interno 
 
 ---
 
-## 20. Resumen Final
+## 21. Resumen Final
 Esta última parte condensa los puntos principales de toda la documentación. Resume el propósito del backend, su flexibilidad, la capacidad de visualización y las posibles vías de ampliación para proyectos futuros.
 
 **El backend:**
