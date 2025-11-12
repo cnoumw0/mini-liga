@@ -637,4 +637,3 @@ Este backend constituye una base sólida para proyectos de detección de anomal�
 
 ---
 
-Si necesitas que profundicemos en el contenido de `models/` o crear automáticamente documentación adicional (por ejemplo OpenAPI enriquecida con ejemplos), házmelo saber y lo elaboramos. ¿Te gustaría también generar una plantilla README específica o scripts de prueba?
