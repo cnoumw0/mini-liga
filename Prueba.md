@@ -1,33 +1,38 @@
 # Documentación Completa del Backend (Aplicación Web + API de Inferencia de Anomalías)
 
 ## 1. Introducción General
-Esta sección presenta una visión global del backend: que implementa una API de inferencia de anomalías basada en PatchCore sobre imágenes, construida con FastAPI. Expone endpoints para salud, servir un frontend estático y realizar predicciones de anomalía. Internamente carga un backbone (ResNet18), un memory bank (KNN sobre embeddings normalizados) y aplica opcionalmente una Región de Interés (ROI) y operaciones de visualización (overlays y polígonos).
+Este backend implementa una **API de inferencia de anomalías** basada en **PatchCore** sobre imágenes, construida con **FastAPI**.  
+Expone endpoints para verificar el estado del sistema, servir un frontend estático y realizar predicciones de anomalía.  
 
-#### Nota: Una API de inferencia es una interfaz que permite enviar datos (en este caso, imágenes) a un modelo de inteligencia artificial ya entrenado y recibir resultados o predicciones.
+Internamente carga un **backbone ResNet18**, un **memory bank** (KNN sobre embeddings normalizados) y aplica opcionalmente una **Región de Interés (ROI)** junto con operaciones de visualización (overlays y polígonos).
 
-Objetivos principales:
-- Recibir una imagen.
-- Transformarla y extraer características.
-- Calcular mapa de calor de anomalías y un score.
-- Decidir si es anómala en función de umbrales flexibles.
-- (Opcional) Generar visualizaciones y polígonos de áreas anómalas para el frontend.
+**Nota:** Una API de inferencia es una interfaz que permite enviar datos (en este caso, imágenes) a un modelo de inteligencia artificial ya entrenado y recibir resultados o predicciones.
+
+### Objetivos principales
+- Recibir una imagen.  
+- Transformarla y extraer características.  
+- Calcular un mapa de calor de anomalías y un score.  
+- Decidir si es anómala en función de umbrales flexibles.  
+- *(Opcional)* Generar visualizaciones y polígonos de áreas anómalas para el frontend.
 
 ---
 
 ## 2. Arquitectura General
 En esta parte se detalla cómo están organizados los componentes internos del sistema y cómo interactúan entre sí.
 
-Componentes clave:
-- FastAPI (servidor HTTP + documentación automática de esquema).
-- Módulo de inferencia (main.py).
-- Artefactos de modelo: `memory_bank_core.npz` + `config.json` en `Backend/models/patchcore` (según variable `ARTIFACTS_DIR`).
-- Carpeta `static/` para contenido estático y overlays generados.
-- Carpeta `templates/` que contiene `index.html` (frontend minimalista).
-- ROI opcional (máscara PNG definible por variable de entorno).
-- KNN precalculado sobre embeddings (memory bank) para calcular distancias de patches.
-- Hooks de PyTorch para extraer características de capas intermedias (layer2 y layer3) y fusionarlas.
+**Componentes clave:**
+- **FastAPI** → Servidor HTTP que recibe las peticiones (por ejemplo, `/predict`) y además genera automáticamente la documentación de la API (Swagger/OpenAPI).  
+- **Módulo de inferencia (`main.py`)** → Núcleo del backend: recibe la imagen, la procesa, ejecuta el modelo y devuelve la respuesta JSON.  
+- **Artefactos de modelo** → Ficheros que guardan el conocimiento del sistema, ubicados en `Backend/models/patchcore` (según variable `ARTIFACTS_DIR`):  
+  - `memory_bank_core.npz`: contiene los embeddings de imágenes normales (la “memoria” de lo que es normal).  
+  - `config.json`: guarda parámetros como el umbral (`threshold`) o la versión de embeddings.  
+- **Carpeta `static/`** → Contiene recursos estáticos y las visualizaciones generadas (overlays, heatmaps, máscaras).  
+- **Carpeta `templates/`** → Incluye `index.html`, un frontend minimalista que se sirve en la raíz `/`.  
+- **ROI opcional** → Puede definirse mediante una máscara PNG (`ROI_PATH`) o un recorte porcentual (`IGNORE_BORDER_PCT`) para limitar la región usada en el cálculo del score.  
+- **KNN precalculado** → El sistema compara cada patch de la imagen con los embeddings del *memory bank* usando un algoritmo KNN (k vecinos más cercanos) para calcular distancias de rareza.  
+- **Hooks de PyTorch** → Se enganchan en capas intermedias de ResNet18 (`layer2` y `layer3`) para extraer representaciones multi-escala (texturas y formas) y fusionarlas en una representación conjunta.  
 
-Flujo resumido:
+**Flujo resumido:**
 
 ```
 [Cliente/Frontend] --> /predict (POST, imagen)
@@ -73,36 +78,39 @@ Backend/
  └─ tests/                 # Tests (estructura para expandir)
 ```
 
-Relación:
-- `main.py` monta `/static` y sirve `templates/index.html` en el root `/`.
-- El memory bank se carga de `models/patchcore/memory_bank_core.npz`.
-- Visualizaciones se guardan en `static/overlays/`.
+
+**Relación:**
+- `main.py` monta `/static` y sirve `templates/index.html` en el root `/`.  
+- El memory bank se carga desde `models/patchcore/memory_bank_core.npz`.  
+- Visualizaciones se guardan en `static/overlays/`.  
+
+Esta organización modular facilita el mantenimiento, la reproducibilidad y la integración con frontend y despliegues en producción.
 
 ---
 
 ## 4. Configuración y Variables de Entorno
 En este apartado se muestran las distintas variables que permiten adaptar el comportamiento del `backend` sin necesidad de modificar el código. Estas configuraciones controlan aspectos como la sensibilidad del modelo, la generación de visualizaciones, el uso de máscaras ROI y los límites de procesamiento.
 
-Variables (con valores por defecto si no existen en `.env`):
+**Variables (con valores por defecto si no existen en `.env`):**
 - `ARTIFACTS_DIR` (por defecto: `models/patchcore`)
 - `STATIC_DIR` (por defecto: `static`)
 - `OVERLAYS_SUBDIR` (por defecto: `overlays`)
-- `THRESHOLD` (por defecto: `config.json.threshold` o 0.35)
+- `THRESHOLD` (por defecto: `config.json.threshold` o 0.35 si no está definido)
 - `IMG_SIZE` (por defecto: 256)
 - `KNN_K` (por defecto: 3)
 - `PATCH_STRIDE` (por defecto: 1)
-- `SAVE_VIS` ("1" para habilitar visualizaciones)
+- `SAVE_VIS` (`"1"` habilita visualizaciones; `"0"` solo devuelve JSON)  
 - `AREA_MIN` (por defecto: 200, área mínima de contornos)
-- `IGNORE_BORDER_PCT` (porcentaje recortado de cada borde para ROI)
-- `ROI_PATH` (ruta a PNG binaria para máscara ROI)
+- `IGNORE_BORDER_PCT` (porcentaje recortado simétricamente de cada borde para ROI)
+- `ROI_PATH` (ruta a PNG binaria para máscara ROI, tamaño igual a `IMG_SIZE`)  
 
-Resumen de impacto:
-- Ajustan la sensibilidad y coste computacional.
-- Permiten activar/desactivar visualizaciones.
-- Controlan qué parte de la imagen entra en el score (ROI).
-- Permiten retocar umbrales sin cambiar código.
+**Resumen de impacto:**
+- Ajustan la sensibilidad y coste computacional.  
+- Permiten activar o desactivar visualizaciones.  
+- Controlan qué parte de la imagen entra en el cálculo del score (ROI).  
+- Permiten modificar umbrales sin cambiar código. 
 
-Ejemplo `.env`:
+**Ejemplo `.env`:**
 ```
 THRESHOLD=0.42
 IMG_SIZE=256
@@ -112,84 +120,159 @@ IGNORE_BORDER_PCT=8
 ROI_PATH=./models/roi_mask.png
 ```
 
+Estas variables permiten ajustar el sistema de forma flexible y reproducible, sin necesidad de modificar el código fuente.
+
 ---
 
 ## 5. Flujo de Inferencia Detallado
 Esta sección profundiza en todo el recorrido que sigue una imagen dentro del sistema de inferencia. Desde que se recibe y se transforma, hasta la obtención del mapa de anomalías y el resultado final. Se explican paso a paso los cálculos y operaciones que permiten al backend decidir si una imagen presenta o no una anomalía.
 
-Pasos:
-1. Carga de archivo (`UploadFile`) y decodificación con OpenCV (manejo de BGR, conversión desde BGRA o escala de grises).
-2. Conversión a escala de grises y redimensionado a `IMG_SIZE`.
-3. Conversión a tensor normalizado (0..1) replicando en 3 canales (modelo espera 3 canales).
-4. Forward del backbone ResNet18 con hooks en `layer2` y `layer3`.
-5. Interpolación de `layer3` para igualar tamaño espacial a `layer2`.
-6. Concatenación de features: fcat = [layer2, layer3_up].
-7. Patchify (stride opcional): cada ubicación se convierte en vector.
-8. L2-normalización por patch (coherente con memoria).
-9. Consulta KNN sobre cada patch contra el memory bank.
-10. Cálculo de distancia promedio de los k vecinos => mapa de distancias.
-11. Upsampling a resolución `IMG_SIZE`.
-12. Normalización min-max para visualización.
-13. Score = máximo del mapa dentro de ROI (si definida) o global.
-14. Comparación con `threshold` (modulado por `mode` y parámetro `thr`).
-15. Si `SAVE_VIS=1`, generación de overlay, heatmap coloreado, máscara binaria y polígonos.
-16. Respuesta JSON.
+**Pasos:**
+1. **Carga y validación de archivo**: recepción (`UploadFile`), verificación de tipo MIME/tamaño y decodificación con OpenCV (manejo BGR, conversión desde BGRA o escala de grises).  
+2. **Preprocesado básico**: conversión a escala de grises y redimensionado a `IMG_SIZE`.  
+3. **Tensor de entrada**: normalización a rango esperado y replicado a 3 canales (ResNet18 espera 3 canales).  
+4. **Forward del backbone**: ejecución de ResNet18 con hooks en `layer2` y `layer3`.  
+5. **Alineación espacial**: interpolación de `layer3` para igualar tamaño a `layer2`.  
+6. **Fusión de características**: concatenación por canales `fcat = [layer2, layer3_up]`.  
+7. **Patchify**: conversión de cada ubicación espacial en un vector; `stride` opcional para subsampling.  
+8. **Normalización L2 por patch**: asegurar comparabilidad con la memoria.  
+9. **Consulta KNN**: cada patch contra el memory bank (k vecinos).  
+10. **Mapa de distancias**: distancia promedio a los `k` vecinos → mapa de rareza.  
+11. **Upsampling**: redimensionado del mapa a resolución `IMG_SIZE`.  
+12. **Normalización para visualización**: min-max del mapa para overlay y heatmap (no altera el cálculo del score).  
+13. **Cálculo de score**: máximo del mapa dentro de la ROI (si definida); fuera de ROI se ignora/mascara.  
+14. **Decisión**: comparación `score` vs `threshold` efectivo (base `.env` ajustado por `thr` y `mode`).  
+15. **Visualización (opcional)**: si `SAVE_VIS=1`, generación de overlay, heatmap coloreado, máscara binaria; operaciones morfológicas y extracción/aproximación de contornos y polígonos.  
+16. **Respuesta**: JSON con `score`, `threshold`, `is_anomaly`, `polygons` (si anomalía) y `overlay_url`.
+
+```
++-------------------+
+|   Imagen entrada  |
+|   (UploadFile)    |
++---------+---------+
+          |
+          v
++-------------------+
+| Preprocesado      |
+| - OpenCV decode   |
+| - Gris + resize   |
+| - Tensor 3 canales|
++---------+---------+
+          |
+          v
++-------------------+
+| Backbone ResNet18 |
+| Hooks: layer2/l3  |
++---------+---------+
+          |
+          v
++-------------------+
+| Alineación & Fusión|
+| - Upsample layer3  |
+| - Concat canales   |
++---------+---------+
+          |
+          v
++-------------------+
+| Patchify + L2 norm|
++---------+---------+
+          |
+          v
++-------------------+
+| KNN Memory Bank   |
+| - Distancias k    |
+| - Mapa rareza     |
++---------+---------+
+          |
+          v
++-------------------+
+| Postprocesado     |
+| - Upsample mapa   |
+| - Min-max norm    |
+| - ROI + score max |
++---------+---------+
+          |
+          v
++-------------------+
+| Comparación       |
+| score vs threshold|
+| (thr/mode/.env)   |
++---------+---------+
+          |
+          v
++-------------------+
+| Visualización     |
+| - Overlay/heatmap |
+| - Máscara/polígonos|
++---------+---------+
+          |
+          v
++-------------------+
+| Respuesta JSON    |
+| score, threshold, |
+| is_anomaly, polys,|
+| overlay_url       |
++-------------------+
+
+```
 
 ---
 
 ## 6. Backbone y Extracción de Características
 En este punto se describe el corazón del modelo: el backbone ResNet18. Se explica cómo se aprovechan sus capas intermedias (hooks), cómo se combinan las características extraídas y por qué se usa un enfoque basado en distancias KNN sobre embeddings. El objetivo es entender cómo el sistema “aprende” a reconocer lo normal y a detectar lo que se sale de ese patrón.
 
-### Nota: El backbone (ResNet18) actúa como extractor de características, generando representaciones visuales en múltiples niveles de abstracción (bordes, texturas, formas), que sirven como base para los procesos posteriores de detección de anomalías.
+**Nota:** El backbone (ResNet18) actúa como extractor de características, generando representaciones visuales en múltiples niveles de abstracción (bordes, texturas, formas), que sirven como base para los procesos posteriores de detección de anomalías.
 
-- Backbone: `ResNet18` pre-entrenado en ImageNet.
-- Hooks:
-  - `layer2` captura características de nivel medio (textura).
-  - `layer3` características más profundas; se hace upsample para alineación espacial.
-- Fusión: concatenación de canales => mejora representación multi-escala.
-- Normalización de patches: asegura distribución comparable a la almacenada en memory bank (evita escalas arbitrarias).
-- KNN: usa distancias medias (promedio de k vecinos) como puntaje de rareza (anomalía = embedding poco similar al banco).
+- **Backbone**: `ResNet18` pre-entrenado en ImageNet.  
+- **Hooks**:
+  - `layer2` captura características de nivel medio (textura, bordes locales).
+  - `layer3` características más profundas (formas y semántica global); se aplica *upsample* para alinear espacialmente.
+- **Fusión**: concatenación de canales ⇒ representación multi-escala que combina detalle fino y contexto global.
+- **Normalización de patches**: asegura que los embeddings nuevos tengan distribución comparable a la almacenada en el *memory bank*, evitando escalas arbitrarias.
+- **KNN**: calcula distancias promedio a los *k* vecinos más cercanos como puntaje de rareza (anomalía = embedding poco similar al banco).
 
-Ventajas:
-- No requiere retraining para cada clase normal (memory bank preconstruido).
+**Ventajas:**
+- No requiere retraining para cada clase normal (memory bank preconstruido).  
 - Escalable a diferentes objetos si se reconstruye el banco.
+
+Este diseño permite que el sistema aprenda lo normal de manera no supervisada y detecte desviaciones sin necesidad de entrenar un clasificador específico.
 
 ---
 
 ## 7. ROI y Manejo de Bordes
 Este apartado describe el manejo de las `Regiones de Interés (ROI)`. El objetivo es permitir que el sistema se concentre en áreas relevantes de la imagen, ignorando bordes o zonas irrelevantes, con el fin de reducir falsos positivos en la detección de anomalías.
 
-Dos mecanismos:
-1. Recorte de bordes: `IGNORE_BORDER_PCT` crea margen ignorado (Los píxeles en esa zona se marcan como 0 en la máscara).
-2. Máscara externa (`ROI_PATH`): imagen binaria (blanco = área válida). La máscara se reescala a `IMG_SIZE` y se combina con el recorte de bordes.
+**Mecanismos disponibles:**
+1. **Recorte de bordes (`IGNORE_BORDER_PCT`)**: crea margen ignorado. Los píxeles en esa zona se marcan como 0 en la máscara.
+2. **Máscara externa (`ROI_PATH`)**: imagen binaria (blanco = área válida). La máscara se reescala a `IMG_SIZE` y se combina con el recorte de bordes.
 
-Uso:
+**Uso:**
 - Al calcular el score, los píxeles fuera de ROI se penalizan (se les asigna un valor mínimo `-1`).
 - En visualización, el borde de la ROI se dibuja con color cian (0,255,255).
 - La máscara afecta sólo score y binarización para polígonos, no el colormap.
 
-Consideraciones:
+**Consideraciones:**
 - Si la máscara final queda toda a cero, se ignora ROI (retorna `None`).
 - Evita falsos positivos en áreas irrelevantes (bordes, fondo).
 
-En resumen, el sistema permite definir regiones de interés mediante recorte de bordes y máscaras externas, asegurando que la detección de anomalías se centre en las zonas relevantes de la imagen y minimice errores en áreas no significativas.
+De esta manera, el sistema se centra únicamente en las regiones relevantes, mejorando la precisión de la detección de anomalías.
 
 ---
 
 ## 8. Cálculo del Mapa de Anomalía y Score
 Aquí se explica la lógica matemática que hay detrás del resultado. Se detalla cómo se construye el mapa de anomalía (heatmap), cómo se normalizan los valores y cómo se obtiene un “score” que resume la rareza de la imagen. También se describe cómo los modos “sensitive” y “strict” ajustan dinámicamente los umbrales.
 
-Definiciones:
+**Definiciones:**
 - `heat`: mapa en float32 resultante del resizing de distancias por patch.
 - `hmin`, `hmax`: valores mínimo y máximo usados para normalización.
 - `heat_norm`: escala 0..1 usada en visualizaciones y para derivar umbral relativo.
 - `score`: máximo valor de `heat` dentro de la ROI (si existe), o máximo global en caso contrario.
 
-Interpretación:
+**Interpretación:**
 - Distancias mayores => más anómalo.
 - Score > threshold => `is_anomaly = True`.
 
-Umbral efectivo:
+**Umbral efectivo:**
 ```
 threshold_base = THRESHOLD (env o config)
 if mode == "sensitive": threshold = threshold_base * 0.8
@@ -197,18 +280,18 @@ elif mode == "strict":  threshold = threshold_base * 1.2
 if thr (param query) != None: threshold = thr  (override total)
 ```
 
-Normalización del umbral para máscara:
+**Normalización del umbral para máscara:**
 ```
 thr_norm = (threshold - hmin) / (hmax - hmin + 1e-8)
 ```
-Se usa para segmentar el mapa normalizado.
+Se utiliza para segmentar el mapa normalizado en regiones normales y anómalas, facilitando la visualización y la generación de máscaras binarias.
 
 ---
 
 ## 9. Visualización y Polígonos
 Esta sección introduce la generación de los resultados visuales que ayudan a interpretar las anomalías detectadas. Se explica cómo se crean los mapas de calor, las máscaras binarias, los polígonos que delimitan zonas anómalas y cómo todo esto se guarda como archivos accesibles desde el frontend.
 
-Proceso en `save_visuals_and_polys`:
+**Proceso en `save_visuals_and_polys`:**
 1. Convierte `heat_norm` a 8 bits (0–255).
 2. Genera colormap (JET).
 3. Superpone colormap con la imagen gris original.
@@ -224,9 +307,10 @@ Proceso en `save_visuals_and_polys`:
    - `*_mask.png`
 11. Construye URLs públicas (`/static/overlays/...`).
 
-Los polígonos sólo se retornan si `is_anomaly` es True (control lógico en endpoint).
+**Control lógico:**  
+- Los polígonos sólo se retornan si `is_anomaly = True`.  
 
-Ejemplo de respuesta parcial:
+**Ejemplo de respuesta parcial:**
 ```
 {
   "score": 0.57,
@@ -280,7 +364,7 @@ En esta sección se documentan los diferentes endpoints que ofrece el backend. S
 - Campo Form:
   - `file`: imagen (jpeg/png)
 - Respuestas:
-  - 200 OK:
+  - **200 OK**:
     ```
     {
       "score": float,
@@ -290,19 +374,19 @@ En esta sección se documentan los diferentes endpoints que ofrece el backend. S
       "overlay_url": "/static/overlays/xxx_overlay.png" | null
     }
     ```
-  - 400 Bad Request:
+  - **400 Bad Request**:
     - "Archivo vacío."
     - "No se pudo decodificar la imagen."
-  - 500 (startup error si faltan artefactos):
+  - **500 Startup Error** (si faltan artefactos):
     - "No existe memory bank: ..." (lanzado en carga inicial)
 
-Ejemplo (curl):
+**Ejemplo (curl):**
 ```
 curl -X POST "http://localhost:8000/predict?mode=sensitive" \
   -F "file=@./ejemplos/pieza123.png"
 ```
 
-Ejemplo (Python requests):
+**Ejemplo (Python requests):**
 ```python
 import requests
 with open("pieza123.png", "rb") as f:
@@ -316,101 +400,118 @@ print(r.json())
 ## 11. Ejemplos de Uso en Diferentes Escenarios
 Aquí se presentan ejemplos prácticos que muestran cómo utilizar la API en distintos contextos: pruebas rápidas, auditorías, o ejecuciones sin visualización. Estos ejemplos ayudan a entender mejor el uso real de los endpoints y cómo aprovechar sus parámetros
 
-1. Detección flexible:
+1. **Detección flexible**  
    - Ajustar el umbral dinámicamente para una tanda de imágenes con mayor ruido: usar `mode=sensitive`.
    - Para mayor rigor, se puede usar `mode=strict`, que incrementa el umbral en un 20%.
-2. Auditoría:
+     
+2. **Auditoría** 
    - Llamar `/health` para verificar que la versión del modelo cargado coincide con expectativas (umbral, IMG_SIZE).
-3. Visualización desactivada:
+     
+3. **Visualización desactivada** 
    - Ejecutar con `SAVE_VIS=0` para reducir I/O si sólo se requiere JSON.
    - - En este modo, no se generan archivos visuales (`overlay.png`, `heat.png`, `mask.png`), y la respuesta se limita al JSON con score, threshold y polígonos.  
 
 ---
 
 ## 12. Integración con Frontend
-Esta sección introduce cómo la capa web usa la API.
+Esta sección explica cómo el frontend se conecta con la API. Se muestra cómo se utiliza el endpoint principal para subir imágenes y visualizar los resultados, y se proponen ideas para ampliar la interfaz (como sliders de umbral o selección de modo).
 
-- `GET /` entrega `index.html` que podría incluir:
+- `GET /` entrega `index.html` que actúa como un frontend mínimo de referencia. Este puede incluir:
   - Form para subir imagen.
-  - Fetch a `/predict`.
-  - Render de `overlay_url`.
-- Archivos generados (overlays) viven en `/static/overlays/`.
-- Puede ampliarse para:
-  - Mostrar polígonos sobre un canvas.
-  - Slider para `thr` en cliente (invocar con `?thr=`).
-  - Selector de `mode`.
+  - Llamada `fetch` al endpoint `/predict`.
+  - Renderizado del resultado mediante `overlay_url`.
+- Los archivos generados (overlays, heatmaps y máscaras) se almacenan en `/static/overlays/` y pueden ser consumidos directamente por el frontend.
+- Posibles ampliaciones de la interfaz:
+  - Mostrar polígonos sobre un canvas interactivo.
+  - Slider para ajustar el umbral (`thr`) en cliente, invocando `/predict?thr=...`.
+  - Selector de modo (`sensitive` o `strict`) para modificar dinámicamente el comportamiento del detector.
+
+De esta manera, el frontend puede ofrecer una experiencia interactiva y configurable para la detección de anomalías.
 
 ---
 
 ## 13. Dependencias (requirements.txt)
-Esta sección introduce las librerías principales y su razón de uso.
+Aquí se listan las librerías principales del proyecto y se explica brevemente el papel de cada una. También se dan recomendaciones sobre la compatibilidad y fijación de versiones, especialmente para los componentes más sensibles como PyTorch y CUDA.
 
-Probables (según lógica del código):
-- fastapi: framework web.
-- uvicorn: servidor ASGI.
-- python-dotenv: carga de `.env`.
-- numpy, opencv-python (cv2): procesamiento de imágenes.
-- torch, torchvision: backbone y operaciones tensoriales.
-- scikit-learn: KNN.
-- (Opcional) pillow si requerido por torchvision internamente.
+**Dependencias principales:**
+- fastapi: framework web para construir la API.
+- uvicorn: servidor ASGI para ejecutar la aplicación.
+- python-dotenv: carga de variables desde `.env`.
+- numpy, opencv-python (cv2): procesamiento de imágenes y operaciones numéricas.
+- torch, torchvision: backbone (ResNet18) y operaciones tensoriales.
+- scikit-learn: mplementación de KNN para el memory bank.
+- *(Opcional)* `pillow`: requerido por `torchvision` para algunas transformaciones de imágenes. 
+- *(Opcional)* `jinja2`, `python-multipart`: útiles si se emplean templates o formularios en el frontend.
 
-Impactos:
-- Asegurarse compatibilidad de versiones (torch + CUDA).
-- Recomendado fijar versiones para reproducibilidad del memory bank.
+**Impactosy recomendaciones:**
+- Verificar compatibilidad entre `torch` y la versión de CUDA instalada.  
+- Fijar versiones en `requirements.txt` (ejemplo: `torch==2.0.1`, `fastapi==0.103.0`) para asegurar reproducibilidad del memory bank y estabilidad en despliegues.  
+- Documentar dependencias opcionales según el uso real del proyecto.
+
+La fijación de versiones asegura que el entorno sea reproducible y evita incompatibilidades en producción.
 
 ---
 
 ## 14. Tests
-Esta sección introduce la intención de la carpeta de tests.
+En este apartado se explican los tipos de pruebas recomendadas para asegurar el correcto funcionamiento del backend. Se incluyen ejemplos de tests básicos (salud, predicción, errores esperados) y sugerencias para validar casos específicos como el uso de ROI o los modos de sensibilidad.
 
-Sugerencias de casos:
-- Test de `/health` => 200 y campos esperados.
-- Test de `/predict` con imagen válida => `score` numérico y `threshold`.
-- Test de `/predict` con archivo vacío => 400.
-- Test de ROI:
-  - Configurar `IGNORE_BORDER_PCT` y verificar reducción del score fuera de borde.
-- Test de `mode`:
-  - Comparar resultado `is_anomaly` con y sin `mode=sensitive` dado mismo score.
+**Casos sugeridos:**
+- Test de `/health` ⇒ respuesta 200 y campos esperados.  
+- Test de `/predict` con imagen válida ⇒ `score` numérico y `threshold`.  
+- Test de `/predict` con archivo vacío ⇒ respuesta 400.  
+- Test de `/predict` con artefactos faltantes ⇒ respuesta 500 (ejemplo: memory bank inexistente).  
+- Test de ROI ⇒ configurar `IGNORE_BORDER_PCT` y verificar reducción del score fuera del borde.  
+- Test de `mode` ⇒ comparar resultado `is_anomaly` con y sin `mode=sensitive` dado mismo score.  
+- Test de visualización ⇒ verificar que `overlay_url` apunta a `/static/overlays/...`.
 
-Ejemplo conceptual (pytest):
+  
+**Ejemplo conceptual (pytest):**
 ```python
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert "status" in r.json()
+    data = r.json()
+    assert "status" in data
+    assert data["status"] == "ok"
+    assert "device" in data
 ```
 
 ---
 
 ## 15. Seguridad y Rendimiento
-Esta sección introduce aspectos de robustez.
+Esta parte reúne las buenas prácticas para mantener el backend estable, rápido y seguro. Se comentan medidas como la validación de archivos, la limitación del tamaño de entrada, el cacheo de componentes y la configuración adecuada del CORS en entornos de producción.
 
-Recomendaciones:
-- Límite de tamaño de archivo (middleware adicional).
-- Validar tipos MIME.
-- Cachear backbone y KNN (ya se hace en startup).
-- Evitar sobrescritura arbitraria de overlays (sanear nombre base).
-- Escalar horizontalmente con un balanceador y replicate memory bank read-only.
-- Para altos volúmenes: considerar batching (no implementado) o reducir `IMG_SIZE`.
-- CORS actual es abierto (`allow_origins=["*"]`); restringir en producción.
+**Recomendaciones:**
+- **Límite de tamaño de archivo**: implementar middleware adicional para evitar cargas excesivas.  
+- **Validar tipos MIME y extensiones**: asegurar que solo se acepten imágenes válidas (JPEG/PNG).  
+- **Cachear backbone y KNN**: ya se realiza en *startup* para reducir latencia en inferencia.  
+- **Evitar sobrescritura arbitraria de overlays**: sanear el nombre base y generar identificadores únicos (UUID/timestamp).  
+- **Escalado horizontal**: usar balanceador de carga y replicar el *memory bank* en modo *read-only*.  
+- **Altos volúmenes de datos**: considerar batching (no implementado) o reducir `IMG_SIZE` para optimizar rendimiento.  
+- **CORS**: actualmente abierto (`allow_origins=["*"]`); en producción restringir a dominios confiables.
 
+La aplicación de estas medidas asegura un backend robusto, eficiente y seguro en entornos de producción.
+  
 ---
 
 ## 16. Extensiones Futuras
-Esta sección introduce ideas para evolución.
+Aquí se presentan ideas y líneas de mejora que podrían implementarse a futuro, como el procesamiento en lote, la autenticación, la persistencia en base de datos o la exposición de métricas de rendimiento.
 
-Ideas:
-- Endpoint `GET /config` para exponer más metadatos (e.g. versión de memory bank).
-- Endpoint `POST /predict/batch` para múltiples imágenes.
-- Añadir autenticación (tokens).
-- Exportar métricas Prometheus (latencia, conteo de inferencias).
-- Persistir resultados (BD ligera: SQLite/PostgreSQL).
-- WebSocket para progreso si se añade preprocesado pesado.
+**Ideas:**
+- **Endpoint `GET /config`**: exponer metadatos adicionales (versión del memory bank, parámetros activos como `IMG_SIZE`, `knn_k`, `threshold`).  
+- **Endpoint `POST /predict/batch`**: permitir envío de múltiples imágenes en una sola petición y devolver resultados en paralelo.  
+- **Autenticación**: añadir soporte de tokens (JWT, OAuth2) para restringir el acceso a endpoints sensibles.  
+- **Métricas Prometheus**: exportar indicadores de latencia, conteo de inferencias, errores y uso de recursos (CPU/GPU).  
+- **Persistencia de resultados**: almacenar inferencias en una base de datos ligera (SQLite para desarrollo, PostgreSQL para producción).  
+- **WebSocket**: habilitar notificaciones en tiempo real para mostrar progreso en tareas pesadas (preprocesado o batch).  
+
+Estas extensiones permitirían escalar el sistema, mejorar la seguridad y ofrecer mayor observabilidad en entornos de producción.
+
 
 ---
 
 ## 17. Diagramas ASCII de Arquitectura
-Esta sección introduce representaciones textuales para visualización conceptual.
+En esta sección se muestran diagramas de texto que ayudan a visualizar la relación entre los distintos componentes del sistema. Son útiles para comprender de un vistazo cómo fluye la información desde el frontend hasta la inferencia y la respuesta.
 
 ### 17.1 Componentes
 ```
@@ -432,66 +533,78 @@ Esta sección introduce representaciones textuales para visualización conceptua
                                 |  (embeddings normal)     |
                                 +------------+-------------+
                                              |
+                                 +------------v-------------+
+                                |  Inferencia               |
+                                |  - Patchify               |
+                                |  - Distancias KNN         |
+                                |  - Heat / Score / ROI     |
+                                |  - Comparación threshold  |
+                                +------------+--------------+
+                                             |
                                 +------------v-------------+
-                                |  Inferencia              |
-                                |  - Patchify              |
-                                |  - Distancias KNN        |
-                                |  - Heat / Score / ROI    |
+                                |  Visualizaciones         |
+                                |  overlays / polígonos    |
+                                |  archivos en /static/... |
                                 +------------+-------------+
                                              |
                                 +------------v-------------+
-                                |  Visualizaciones          |
-                                |  overlays / polígonos     |
-                                +------------+-------------+
-                                             |
-                                +------------v-------------+
-                                |  Respuesta JSON           |
+                                |  Respuesta JSON          |
+                                |  score, threshold,       |
+                                |  is_anomaly, polygons,   |
+                                |  overlay_url             |
                                 +--------------------------+
 ```
 
 ---
 
 ## 18. Docstrings y Mejores Prácticas
-Esta sección introduce recomendaciones de documentación interna.
+Este apartado destaca la importancia de la documentación interna en el código. Se dan ejemplos de cómo escribir docstrings claros y cómo anotar funciones clave para facilitar el mantenimiento y la comprensión del sistema por otros desarrolladores.
 
-Funciones clave ya documentadas parcialmente:
+**Funciones clave ya documentadas parcialmente:**
 - `_abs()`
 - `anomaly_map_and_score()` explica retorno.
 - `save_visuals_and_polys()` explica comportamiento.
 
-Sugerencias:
-- Agregar docstring a `build_backbone()` explicitando capas hookeadas.
-- Documentar parámetros de `predict()` (thr, mode) en el propio endpoint usando `description`.
-- Incluir en `config.json` campos versionados (ej: `{"threshold":0.35,"embedding_version":"resnet18_layer2_3_concat_v1"}`).
+**Sugerencias de mejora:**
+- Agregar docstring a `build_backbone()` explicitando las capas hookeadas.  
+- Documentar parámetros de `predict()` (`thr`, `mode`, `file`) en el propio endpoint usando `description`.  
+- Incluir en `config.json` campos versionados, por ejemplo:
+  ```json
+  {
+    "threshold": 0.35,
+    "embedding_version": "resnet18_layer2_3_concat_v1",
+    "model_version": "1.0.0"
+  }
 
-Ejemplo de docstring ampliado:
+**Ejemplo de docstring ampliado (estilo Google):**
 ```python
 def build_backbone() -> Tuple[torch.nn.Module, FeatHook, FeatHook]:
     """
     Construye ResNet18 pre-entrenada y registra hooks en layer2 y layer3.
-    Retorna:
-        backbone: modelo en modo eval.
-        h2: hook para features intermedias (textura).
-        h3: hook para features más profundas (forma/semántica).
+
+    Returns:
+        backbone (torch.nn.Module): Modelo en modo eval.
+        h2 (FeatHook): Hook para features intermedias (textura).
+        h3 (FeatHook): Hook para features más profundas (forma/semántica).
     """
 ```
 
 ---
 
 ## 19. Ejemplo Completo de Ciclo de Inferencia
-Esta sección introduce un ejemplo end-to-end para consolidar lo aprendido.
+Aquí se muestra un caso práctico completo, paso a paso, de cómo el backend procesa una imagen real. Permite entender de forma concreta cómo se aplican los parámetros y cómo se interpreta la respuesta final.
 
 Dado:
 - Imagen `pieza123.png`
 - `.env` con `THRESHOLD=0.40`
 - Se llama: `POST /predict?mode=strict`
 
-Flujo:
-1. Umbral base 0.40 → modo strict => 0.48.
-2. Se calcula `score = 0.52`.
-3. `score > threshold` ⇒ anomalía.
-4. Se generan overlays y se detectan dos contornos.
-5. Respuesta:
+**Flujo:**
+1. Umbral base = 0.40 → modo `strict` incrementa 20% ⇒ threshold efectivo = 0.48.  
+2. Se calcula `score = 0.52`.  
+3. Como `score > threshold`, se determina que la imagen es una anomalía.  
+4. Se generan overlays y, tras binarización y operaciones morfológicas, se detectan dos contornos.  
+5. Respuesta JSON:
 ```
 {
   "score": 0.52,
@@ -504,19 +617,23 @@ Flujo:
   "overlay_url": "/static/overlays/pieza123_overlay.png"
 }
 ```
+*(Los polígonos se devuelven únicamente si `is_anomaly = true`.)*
+
+Este ejemplo muestra cómo los parámetros de configuración y el flujo interno del backend se reflejan directamente en la respuesta final consumida por el frontend.
+
 
 ---
 
 ## 20. Resumen Final
-Esta sección introduce una recapitulación rápida.
+Esta última parte condensa los puntos principales de toda la documentación. Resume el propósito del backend, su flexibilidad, la capacidad de visualización y las posibles vías de ampliación para proyectos futuros.
 
-El backend:
-- Ofrece inferencia de anomalías eficiente con PatchCore (ResNet18 + KNN).
-- Es configurable vía entorno (.env).
-- Proporciona visualizaciones opcionales para análisis humano.
-- Permite ajustar sensibilidad por `mode` o parámetro `thr`.
-- Facilita integración con un frontend básico.
-- Es extensible hacia batching, autenticación y almacenamiento persistente.
+**El backend:**
+- **Core**: ofrece inferencia de anomalías eficiente con PatchCore (ResNet18 + KNN).  
+- **Configuración y visualización**: es configurable vía entorno (`.env`), proporciona visualizaciones opcionales para análisis humano y permite ajustar sensibilidad por `mode` o parámetro `thr`.  
+- **Integración y extensibilidad**: facilita integración con un frontend básico y es extensible hacia batching, autenticación y almacenamiento persistente.  
+
+Este backend constituye una base sólida para proyectos de detección de anomalías y puede evolucionar hacia soluciones más complejas y escalables.
+
 
 ---
 
