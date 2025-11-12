@@ -6,7 +6,7 @@ Expone endpoints para verificar el estado del sistema, servir un frontend estát
 
 Internamente carga un **backbone ResNet18**, un **memory bank** (KNN sobre embeddings normalizados) y aplica opcionalmente una **Región de Interés (ROI)** junto con operaciones de visualización (overlays y polígonos).
 
-**Nota:** Una API de inferencia es una interfaz que permite enviar datos (en este caso, imágenes) a un modelo de inteligencia artificial ya entrenado y recibir resultados o predicciones.
+>**Nota:** Una API de inferencia es una interfaz que permite enviar datos (en este caso, imágenes) a un modelo de inteligencia artificial ya entrenado y recibir resultados o predicciones.
 
 ### Objetivos principales
 - Recibir una imagen.  
@@ -221,7 +221,7 @@ Esta sección profundiza en todo el recorrido que sigue una imagen dentro del si
 ## 6. Backbone y Extracción de Características
 En este punto se describe el corazón del modelo: el backbone ResNet18. Se explica cómo se aprovechan sus capas intermedias (hooks), cómo se combinan las características extraídas y por qué se usa un enfoque basado en distancias KNN sobre embeddings. El objetivo es entender cómo el sistema “aprende” a reconocer lo normal y a detectar lo que se sale de ese patrón.
 
-**Nota:** El backbone (ResNet18) actúa como extractor de características, generando representaciones visuales en múltiples niveles de abstracción (bordes, texturas, formas), que sirven como base para los procesos posteriores de detección de anomalías.
+>**Nota:** El backbone (ResNet18) actúa como extractor de características, generando representaciones visuales en múltiples niveles de abstracción (bordes, texturas, formas), que sirven como base para los procesos posteriores de detección de anomalías.
 
 - **Backbone**: `ResNet18` pre-entrenado en ImageNet.  
 - **Hooks**:
@@ -528,9 +528,9 @@ Los tests permiten validar el correcto funcionamiento del backend.
 - Ejecutar un test concreto:
     - `pytest -q Backend/tests/test_health.py -k test_health`
  
-**Notas:**
-- Si los tests usan FastAPI TestClient, no necesitas arrancar `uvicorn`; los tests importan la app directamente.
-- Si un test falla con error de artefactos, revisa la ruta (`ARTIFACTS_DIR`) o coloca los archivos en `Backend/models/patchcore/`.
+>**Notas:**
+>  - Si los tests usan FastAPI TestClient, no necesitas arrancar `uvicorn`; los tests importan la app directamente.
+>  - Si un test falla con error de artefactos, revisa la ruta (`ARTIFACTS_DIR`) o coloca los archivos en `Backend/models/patchcore/`.
 
 ---
 
