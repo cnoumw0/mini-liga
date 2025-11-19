@@ -639,40 +639,6 @@ En esta sección se muestran diagramas de texto que ayudan a visualizar la relac
 
 ---
 
-## 19. Docstrings y Mejores Prácticas
-Este apartado destaca la importancia de la documentación interna en el código. Se dan ejemplos de cómo escribir docstrings claros y cómo anotar funciones clave para facilitar el mantenimiento y la comprensión del sistema por otros desarrolladores.
-
-**Funciones clave ya documentadas parcialmente:**
-- `_abs()`
-- `anomaly_map_and_score()` explica retorno.
-- `save_visuals_and_polys()` explica comportamiento.
-
-**Sugerencias de mejora:**
-- Agregar docstring a `build_backbone()` explicitando las capas hookeadas.  
-- Documentar parámetros de `predict()` (`thr`, `mode`, `file`) en el propio endpoint usando `description`.  
-- Incluir en `config.json` campos versionados, por ejemplo:
-  ```json
-  {
-    "threshold": 0.35,
-    "embedding_version": "resnet18_layer2_3_concat_v1",
-    "model_version": "1.0.0"
-  }
-
-**Ejemplo de docstring ampliado (estilo Google):**
-```python
-def build_backbone() -> Tuple[torch.nn.Module, FeatHook, FeatHook]:
-    """
-    Construye ResNet18 pre-entrenada y registra hooks en layer2 y layer3.
-
-    Returns:
-        backbone (torch.nn.Module): Modelo en modo eval.
-        h2 (FeatHook): Hook para features intermedias (textura).
-        h3 (FeatHook): Hook para features más profundas (forma/semántica).
-    """
-```
-
----
-
 ## 20. Ejemplo Completo de Ciclo de Inferencia
 Aquí se muestra un caso práctico completo, paso a paso, de cómo el backend procesa una imagen real. Permite entender de forma concreta cómo se aplican los parámetros y cómo se interpreta la respuesta final.
 
